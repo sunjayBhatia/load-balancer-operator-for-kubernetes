@@ -21,7 +21,8 @@ func ListAkoDeploymentConfigSelectClusters(
 	ctx context.Context,
 	kclient client.Client,
 	log logr.Logger,
-	obj *akoov1alpha1.AKODeploymentConfig) (*clusterv1.ClusterList, error) {
+	obj *akoov1alpha1.AKODeploymentConfig,
+) (*clusterv1.ClusterList, error) {
 	// get all clusters can be selected by this akodeploymentconfig's cluster selector
 	selector, err := metav1.LabelSelectorAsSelector(&obj.Spec.ClusterSelector)
 	if err != nil {
@@ -68,7 +69,8 @@ func GetAKODeploymentConfigForCluster(
 	ctx context.Context,
 	kclient client.Client,
 	log logr.Logger,
-	cluster *clusterv1.Cluster) (*akoov1alpha1.AKODeploymentConfig, error) {
+	cluster *clusterv1.Cluster,
+) (*akoov1alpha1.AKODeploymentConfig, error) {
 	// list all the akodeploymentconfig objects
 	var akoDeploymentConfigs akoov1alpha1.AKODeploymentConfigList
 	if err := kclient.List(ctx, &akoDeploymentConfigs, []client.ListOption{}...); err != nil {
@@ -103,9 +105,11 @@ func SkipCluster(cluster *clusterv1.Cluster) bool {
 	// if condition.ready is false
 	// and cluster is not being deleted
 	// and cluster is not a bootstrap cluster, skip
-	if conditions.IsFalse(cluster, clusterv1.ReadyCondition) &&
+	// or if paused, skip
+	if (conditions.IsFalse(cluster, clusterv1.ReadyCondition) &&
 		cluster.DeletionTimestamp.IsZero() &&
-		!IsBootStrapCluster() {
+		!IsBootStrapCluster()) ||
+		cluster.Spec.Paused {
 		return true
 	}
 	return false
@@ -120,7 +124,8 @@ func isDefaultWcADC(adcName string) bool {
 func defaultADCHasEmptySelector(ctx context.Context, kclient client.Client) bool {
 	var defaultAdc akoov1alpha1.AKODeploymentConfig
 	if err := kclient.Get(ctx, client.ObjectKey{
-		Name: akoov1alpha1.WorkloadClusterAkoDeploymentConfig},
+		Name: akoov1alpha1.WorkloadClusterAkoDeploymentConfig,
+	},
 		&defaultAdc); err != nil {
 		return false
 	}

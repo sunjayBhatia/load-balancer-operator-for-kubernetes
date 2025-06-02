@@ -6,11 +6,10 @@ package machine
 import (
 	"context"
 
-	ako_operator "github.com/vmware-tanzu/load-balancer-operator-for-kubernetes/pkg/ako-operator"
-
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	akoov1alpha1 "github.com/vmware-tanzu/load-balancer-operator-for-kubernetes/api/v1alpha1"
+	ako_operator "github.com/vmware-tanzu/load-balancer-operator-for-kubernetes/pkg/ako-operator"
 	"github.com/vmware-tanzu/load-balancer-operator-for-kubernetes/pkg/handlers"
 	"github.com/vmware-tanzu/load-balancer-operator-for-kubernetes/pkg/haprovider"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -92,6 +91,11 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 
 	log = log.WithValues("Cluster", cluster.Namespace+"/"+cluster.Name)
 
+	if cluster.Spec.Paused {
+		log.Info("skipping reconciliation, Cluster is paused")
+		return res, nil
+	}
+
 	isVIPProvider, err := ako_operator.IsControlPlaneVIPProvider(cluster)
 	if err != nil {
 		log.Error(err, "can't unmarshal cluster variables")
@@ -130,7 +134,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 
 	// Handle deleted cluster resources.
 	if !cluster.GetDeletionTimestamp().IsZero() {
-		res, err := r.reconcileClusterDelete(ctx, log, obj, cluster)
+		res, err := r.reconcileClusterDelete(log, obj, cluster)
 		if err != nil {
 			log.Error(err, "failed to reconcile Machine deletion")
 			return res, err
@@ -139,7 +143,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 	}
 
 	// Handle non-deleted resources.
-	if res, err := r.reconcileNormal(ctx, log, obj, cluster); err != nil {
+	if res, err := r.reconcileNormal(log, obj, cluster); err != nil {
 		log.Error(err, "failed to reconcile Machine")
 		return res, err
 	}
@@ -147,19 +151,17 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 }
 
 func (r *MachineReconciler) reconcileClusterDelete(
-	ctx context.Context,
 	log logr.Logger,
 	obj *clusterv1.Machine,
 	cluster *clusterv1.Cluster,
 ) (ctrl.Result, error) {
 	log.Info("Start reconciling cluster delete")
-	return r.reconcileMachineDeletionHook(ctx, log, obj, cluster)
+	return r.reconcileMachineDeletionHook(log, obj, cluster)
 }
 
 // reconcileNormal adds the pre-terminate machine deletion phase hook to the
 // Machine
 func (r *MachineReconciler) reconcileNormal(
-	ctx context.Context,
 	log logr.Logger,
 	obj *clusterv1.Machine,
 	cluster *clusterv1.Cluster,
@@ -182,7 +184,6 @@ func (r *MachineReconciler) reconcileNormal(
 // reconcileMachineDeletionHook removes the pre-terminate hook when the finalizer on the Cluster
 // is absent
 func (r *MachineReconciler) reconcileMachineDeletionHook(
-	ctx context.Context,
 	log logr.Logger,
 	obj *clusterv1.Machine,
 	cluster *clusterv1.Cluster,

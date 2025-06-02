@@ -80,6 +80,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ 
 
 	log = log.WithValues("Cluster", cluster.Namespace+"/"+cluster.Name)
 
+	if cluster.Spec.Paused {
+		log.Info("skipping reconciliation, Cluster is paused")
+		return res, nil
+	}
+
 	isVIPProvider, err := ako_operator.IsControlPlaneVIPProvider(cluster)
 	if err != nil {
 		log.Error(err, "can't unmarshal cluster variables")
@@ -158,7 +163,8 @@ func (r *ClusterReconciler) serviceToCluster(c client.Client, log logr.Logger) h
 			NamespacedName: types.NamespacedName{
 				Namespace: cluster.Namespace,
 				Name:      cluster.Name,
-			}}}
+			},
+		}}
 		logger.V(3).Info("Generating requests", "requests", requests)
 		// Return reconcile requests for the cluster resources.
 		return requests
@@ -174,7 +180,8 @@ func (r *ClusterReconciler) deleteAKOStatefulSet(ctx context.Context, c client.C
 	akoStatefulSet := &v1.StatefulSet{}
 	if err := c.Get(ctx, client.ObjectKey{
 		Name:      name,
-		Namespace: namespace},
+		Namespace: namespace,
+	},
 		akoStatefulSet); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
